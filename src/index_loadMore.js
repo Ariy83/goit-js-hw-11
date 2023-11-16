@@ -6,24 +6,19 @@ import 'simplelightbox/dist/simple-lightbox.min.css';
 const refs = {
   formEl: document.querySelector('.search-form'),
   galleryEl: document.querySelector('.gallery'),
-  targetScrollObserverEl: document.querySelector('.js-target-scroll'),
+  loadMoreEl: document.querySelector('.load-more'),
 };
 
 refs.formEl.addEventListener('submit', onFormElSubmit);
+refs.loadMoreEl.addEventListener('click', onLoadMoreEl);
+
+const pixabayAPI = new PixabayAPI();
 
 const lightbox = new SimpleLightbox('.gallery a', {
   captionsData: 'alt',
   captionPosition: 'bottom',
   captionDelay: 250,
 });
-
-const scrollObserver = new IntersectionObserver(loadMoreScroll, {
-  root: null,
-  rootMargin: '0px 0px 400px 0px',
-  threshold: 1,
-});
-
-const pixabayAPI = new PixabayAPI();
 
 function imgTemplate(imgData) {
   const {
@@ -60,6 +55,7 @@ function renderImages(imgArr) {
 
 async function onFormElSubmit(e) {
   e.preventDefault();
+  refs.loadMoreEl.classList.add('is-hidden');
 
   pixabayAPI.query = e.target.elements.searchQuery.value;
   pixabayAPI.page = 1;
@@ -69,8 +65,7 @@ async function onFormElSubmit(e) {
 
     if (data.total === 0) {
       refs.galleryEl.innerHTML = '';
-
-      scrollObserver.unobserve(refs.targetScrollObserverEl);
+      refs.loadMoreEl.classList.add('is-hidden');
       refs.formEl.reset();
       Report.failure(
         'Sorry,',
@@ -82,31 +77,26 @@ async function onFormElSubmit(e) {
     if (data.totalHits <= pixabayAPI.per_page) {
       Report.success(`Hooray! We found ${data.totalHits} images.`);
       refs.galleryEl.innerHTML = renderImages(data.hits);
-
       lightbox.refresh();
-
-      scrollObserver.unobserve(refs.targetScrollObserverEl);
+      refs.loadMoreEl.classList.add('is-hidden');
+      Report.warning(
+        "We're sorry,",
+        "but you've reached the end of search results."
+      );
       return;
     }
 
     Report.success(`Hooray! We found ${data.totalHits} images.`);
     refs.galleryEl.innerHTML = renderImages(data.hits);
-
     lightbox.refresh();
 
-    setTimeout(() => {
-      scrollObserver.observe(refs.targetScrollObserverEl);
-    }, 500);
+    refs.loadMoreEl.classList.remove('is-hidden');
   } catch (err) {
     Report.failure('err');
   }
 }
 
-async function loadMoreScroll(entries, observer) {
-  if (!entries[0].isIntersecting) {
-    return;
-  }
-
+async function onLoadMoreEl(e) {
   pixabayAPI.page += 1;
   try {
     const { data } = await pixabayAPI.getImagesByQuery();
@@ -116,12 +106,15 @@ async function loadMoreScroll(entries, observer) {
     lightbox.refresh();
 
     if (data.totalHits / pixabayAPI.per_page <= pixabayAPI.page) {
-      observer.unobserve(refs.targetScrollObserverEl);
-      Report.warning(
-        "We're sorry,",
-        "but you've reached the end of search results."
-      );
+      refs.loadMoreEl.classList.add('is-hidden');
     }
+    const { height: cardHeight } =
+      refs.galleryEl.firstElementChild.getBoundingClientRect();
+
+    window.scrollBy({
+      top: cardHeight * 2,
+      behavior: 'smooth',
+    });
   } catch (err) {
     Report.failure('err');
   }
